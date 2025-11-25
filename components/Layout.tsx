@@ -19,7 +19,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, isAdmin }) =>
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
             <h1 className="text-xl font-bold tracking-tight text-gray-900">
-              {isAdmin ? 'Pathfinder Admin' : 'Pathfinder Evaluation'}
+              {isAdmin ? 'NINJA Admin' : 'NINJA Evaluation'}
             </h1>
           </div>
           {(user || isAdmin) && (

@@ -1,5 +1,5 @@
 {
-  "name": "Pathfinder Evaluation System",
+  "name": "S4Carlisle Evaluation System",
   "description": "A secure, AI-powered assessment platform for React developers, featuring proctoring, real-time persistence, and automated grading.",
   "requestFramePermissions": [
     "camera",
