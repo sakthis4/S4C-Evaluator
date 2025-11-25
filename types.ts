@@ -6,6 +6,7 @@ export interface Candidate {
   currentSalary: string;
   noticePeriod: string;
   registeredAt: number;
+  assignedPaperId?: string; // Link to the specific exam paper
 }
 
 export interface Question {
@@ -13,8 +14,25 @@ export interface Question {
   section: string;
   title: string;
   text: string;
-  idealAnswerKey: string; // Used for AI grading context
-  codeType?: 'javascript' | 'text'; // Added for code editor support
+  idealAnswerKey: string;
+  codeType?: 'javascript' | 'text';
+  marks?: number; // Configurable marks per question
+}
+
+export interface QuestionPaper {
+  id: string;
+  title: string;
+  description: string;
+  questions: Question[];
+  createdAt: number;
+}
+
+export interface ExamAssignment {
+  id: string;
+  email: string;
+  paperId: string;
+  assignedBy: string;
+  assignedAt: number;
 }
 
 export interface Answer {
@@ -30,16 +48,17 @@ export interface ProctorLog {
 
 export interface ExamSubmission {
   candidateId: string;
+  paperId: string; // Track which paper was taken
   startTime: number;
   endTime?: number;
-  answers: Record<string, string>; // questionId -> text
+  answers: Record<string, string>;
   proctorLogs: ProctorLog[];
   status: 'IN_PROGRESS' | 'SUBMITTED' | 'GRADED';
   aiEvaluation?: EvaluationResult;
 }
 
 export interface QuestionEvaluation {
-  score: number; // 0 to 10
+  score: number;
   feedback: string;
 }
 

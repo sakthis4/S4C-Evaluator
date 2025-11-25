@@ -39,8 +39,8 @@ const Login: React.FC<LoginProps> = ({ onRegister, onAdminClick }) => {
         // Optional: Replace alert with a toast or nicer UI if desired
         alert(`Welcome back, ${result.candidate.fullName}! Resuming your assessment.`);
         onRegister(result.candidate);
-      } else {
-        setError('This email address has already been registered and the exam is submitted.');
+      } else if (result.status === 'REJECTED') {
+        setError(result.error || 'Access denied.');
       }
     } catch (e) {
       setError('Registration failed. Please try again.');
@@ -140,7 +140,7 @@ const Login: React.FC<LoginProps> = ({ onRegister, onAdminClick }) => {
             disabled={isLoading}
             className="w-full bg-brand-600 text-white py-2 px-4 rounded-md hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors font-medium disabled:opacity-50"
           >
-            {isLoading ? 'Checking...' : 'Start / Resume Assessment'}
+            {isLoading ? 'Checking Access...' : 'Start / Resume Assessment'}
           </button>
         </div>
       </form>

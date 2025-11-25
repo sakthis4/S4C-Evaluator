@@ -21,9 +21,12 @@ export const evaluateExam = async (
   
   const apiKey = getApiKey();
 
+  // Calculate total possible score based on individual question marks
+  const totalMaxScore = questions.reduce((sum, q) => sum + (q.marks || 10), 0);
+
   if (!apiKey) {
     console.error("No API KEY found");
-    return createFallbackResult(questions, "AI Evaluation Failed: No API Key provided.");
+    return createFallbackResult(questions, totalMaxScore, "AI Evaluation Failed: No API Key provided.");
   }
 
   // Initialize client inside the function to avoid module-level crashes
@@ -39,16 +42,18 @@ export const evaluateExam = async (
     `3. For coding questions (Javascript/React), focus on the logic, state management, and correct usage of hooks. Minor syntax errors should be penalized slightly, but not result in a zero score if the logic is sound.`,
     `4. For architectural/design questions, evaluate the feasibility and reasoning of their approach.`,
     `Return the output strictly in JSON format.`,
-    `For each question, provide a score (0-10) and brief feedback (max 2 sentences).`,
+    `For each question, provide a score (0 to Max Marks) and brief feedback (max 2 sentences).`,
     `Also provide a pass/fail status (Pass if total score > 60% of max).`,
     `Here are the Question/Answer pairs:`
   ];
 
   questions.forEach((q, index) => {
     const answer = answers[q.id] || "NO ANSWER PROVIDED";
+    const marks = q.marks || 10;
     promptParts.push(
       `Q${index + 1} ID: ${q.id}`,
       `Question: ${q.text}`,
+      `Max Marks: ${marks}`,
       `Context/Ideal Key: ${q.idealAnswerKey}`,
       `Candidate Answer: ${answer}`,
       `---`
@@ -111,7 +116,7 @@ export const evaluateExam = async (
 
     return {
       totalScore,
-      maxScore: questions.length * 10,
+      maxScore: totalMaxScore,
       summary: result.summary || "Evaluation completed.",
       passFail: (result.passFail === 'PASS' || result.passFail === 'FAIL') ? result.passFail : 'FAIL',
       questionEvaluations: evaluations
@@ -119,14 +124,14 @@ export const evaluateExam = async (
 
   } catch (error) {
     console.error("AI Evaluation Error", error);
-    return createFallbackResult(questions, "Error during AI evaluation process. See console for details.");
+    return createFallbackResult(questions, totalMaxScore, "Error during AI evaluation process. See console for details.");
   }
 };
 
-const createFallbackResult = (questions: Question[], reason: string): EvaluationResult => {
+const createFallbackResult = (questions: Question[], maxScore: number, reason: string): EvaluationResult => {
   return {
     totalScore: 0,
-    maxScore: questions.length * 10,
+    maxScore: maxScore,
     summary: reason,
     questionEvaluations: questions.reduce((acc, q) => {
       acc[q.id] = { score: 0, feedback: "Evaluation failed" };

@@ -1,14 +1,51 @@
-import { Candidate, ExamSubmission, ProctorLog, EvaluationResult } from '../types';
+import { Candidate, ExamSubmission, ProctorLog, EvaluationResult, QuestionPaper, ExamAssignment, Question } from '../types';
+import { QUESTIONS } from '../constants';
 
 const DB_KEYS = {
   CANDIDATES: 'pathfinder_candidates',
   SUBMISSIONS: 'pathfinder_submissions',
+  PAPERS: 'pathfinder_papers',
+  ASSIGNMENTS: 'pathfinder_assignments'
 };
 
 // Simulate API delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 class DatabaseService {
+  constructor() {
+    this.seedDefaults();
+  }
+
+  private seedDefaults() {
+    // Ensure the default exam exists
+    if (typeof localStorage !== 'undefined') {
+      const papers = this.getList<QuestionPaper>(DB_KEYS.PAPERS);
+      if (papers.length === 0) {
+        const defaultPaper: QuestionPaper = {
+          id: 'default-pathfinder-v1',
+          title: 'Default: Pathfinder Production Tracking',
+          description: 'Standard assessment for React Developer role involving the Pathfinder legacy modernization scenario.',
+          questions: QUESTIONS.map(q => ({ ...q, marks: 10 })), // Default 10 marks
+          createdAt: Date.now()
+        };
+        this.saveList(DB_KEYS.PAPERS, [defaultPaper]);
+
+        // Seed default assignment for the tester
+        const assignments = this.getList<ExamAssignment>(DB_KEYS.ASSIGNMENTS);
+        if (assignments.length === 0) {
+          assignments.push({
+            id: 'assign-default-1',
+            email: 'alex.tester@example.com',
+            paperId: 'default-pathfinder-v1',
+            assignedBy: 'System',
+            assignedAt: Date.now()
+          });
+          this.saveList(DB_KEYS.ASSIGNMENTS, assignments);
+        }
+      }
+    }
+  }
+
   private getList<T>(key: string): T[] {
     try {
       const data = localStorage.getItem(key);
@@ -27,8 +64,66 @@ class DatabaseService {
     }
   }
 
-  async registerCandidate(candidate: Candidate): Promise<{ status: 'CREATED' | 'RESUMED' | 'REJECTED', candidate?: Candidate }> {
+  // --- Assignments ---
+
+  async assignExam(email: string, paperId: string): Promise<void> {
+    await delay(200);
+    const list = this.getList<ExamAssignment>(DB_KEYS.ASSIGNMENTS);
+    // Remove existing assignment for this email if any
+    const filtered = list.filter(a => a.email.toLowerCase() !== email.toLowerCase());
+    filtered.push({
+      id: crypto.randomUUID(),
+      email: email.toLowerCase(),
+      paperId,
+      assignedBy: 'Admin',
+      assignedAt: Date.now()
+    });
+    this.saveList(DB_KEYS.ASSIGNMENTS, filtered);
+  }
+
+  async getAssignment(email: string): Promise<ExamAssignment | undefined> {
+    await delay(100);
+    const list = this.getList<ExamAssignment>(DB_KEYS.ASSIGNMENTS);
+    return list.find(a => a.email.toLowerCase() === email.toLowerCase());
+  }
+
+  async getAllAssignments(): Promise<ExamAssignment[]> {
+    return this.getList<ExamAssignment>(DB_KEYS.ASSIGNMENTS);
+  }
+
+  // --- Papers ---
+
+  async createQuestionPaper(paper: QuestionPaper): Promise<void> {
+    await delay(200);
+    const list = this.getList<QuestionPaper>(DB_KEYS.PAPERS);
+    list.push(paper);
+    this.saveList(DB_KEYS.PAPERS, list);
+  }
+
+  async getAllPapers(): Promise<QuestionPaper[]> {
+    await delay(100);
+    return this.getList<QuestionPaper>(DB_KEYS.PAPERS);
+  }
+
+  async getPaper(id: string): Promise<QuestionPaper | undefined> {
+    const list = this.getList<QuestionPaper>(DB_KEYS.PAPERS);
+    return list.find(p => p.id === id);
+  }
+
+  // --- Candidates ---
+
+  async registerCandidate(candidate: Candidate): Promise<{ status: 'CREATED' | 'RESUMED' | 'REJECTED', candidate?: Candidate, error?: string }> {
     await delay(300);
+    
+    // 1. Check Assignment
+    const assignment = await this.getAssignment(candidate.email);
+    if (!assignment) {
+        return { status: 'REJECTED', error: 'No exam has been assigned to this email address.' };
+    }
+
+    // Attach assigned paper ID
+    candidate.assignedPaperId = assignment.paperId;
+
     const list = this.getList<Candidate>(DB_KEYS.CANDIDATES);
     const existing = list.find(c => c.email.toLowerCase() === candidate.email.toLowerCase());
 
@@ -37,12 +132,17 @@ class DatabaseService {
       const submissions = this.getList<ExamSubmission>(DB_KEYS.SUBMISSIONS);
       const sub = submissions.find(s => s.candidateId === existing.id);
       
-      // If submitted or graded, reject
       if (sub && (sub.status === 'SUBMITTED' || sub.status === 'GRADED')) {
-        return { status: 'REJECTED' }; 
+        return { status: 'REJECTED', error: 'Assessment already submitted.' }; 
       }
       
-      // Otherwise allow resume
+      // Update existing record with latest details just in case, but keep ID
+      existing.currentCompany = candidate.currentCompany;
+      existing.currentSalary = candidate.currentSalary;
+      existing.noticePeriod = candidate.noticePeriod;
+      existing.assignedPaperId = assignment.paperId; // Ensure paper ID is synced
+      this.saveList(DB_KEYS.CANDIDATES, list);
+
       return { status: 'RESUMED', candidate: existing };
     }
 
@@ -63,13 +163,16 @@ class DatabaseService {
     return this.getList<Candidate>(DB_KEYS.CANDIDATES);
   }
 
-  async initSubmission(candidateId: string): Promise<ExamSubmission> {
+  // --- Submissions ---
+
+  async initSubmission(candidateId: string, paperId: string): Promise<ExamSubmission> {
     const list = this.getList<ExamSubmission>(DB_KEYS.SUBMISSIONS);
     let submission = list.find(s => s.candidateId === candidateId);
     
     if (!submission) {
       submission = {
         candidateId,
+        paperId,
         startTime: Date.now(),
         answers: {},
         proctorLogs: [],
@@ -82,7 +185,6 @@ class DatabaseService {
   }
 
   async saveDraft(candidateId: string, answers: Record<string, string>, logs: ProctorLog[]): Promise<void> {
-    // Instant save, minimal delay
     const list = this.getList<ExamSubmission>(DB_KEYS.SUBMISSIONS);
     const idx = list.findIndex(s => s.candidateId === candidateId);
     if (idx !== -1) {
@@ -108,8 +210,6 @@ class DatabaseService {
     const idx = list.findIndex(s => s.candidateId === candidateId);
     if (idx !== -1) {
       list[idx].aiEvaluation = result;
-      // Ensure we don't revert a 'SUBMITTED' status if logic changes, 
-      // but typically graded implies submitted.
       list[idx].status = 'GRADED';
       this.saveList(DB_KEYS.SUBMISSIONS, list);
     }
