@@ -125,28 +125,45 @@ class DatabaseService {
     candidate.assignedPaperId = assignment.paperId;
 
     const list = this.getList<Candidate>(DB_KEYS.CANDIDATES);
-    const existing = list.find(c => c.email.toLowerCase() === candidate.email.toLowerCase());
+    const submissions = this.getList<ExamSubmission>(DB_KEYS.SUBMISSIONS);
+    
+    // Find all records for this email
+    const userCandidates = list.filter(c => c.email.toLowerCase() === candidate.email.toLowerCase());
 
-    if (existing) {
-      // Check submission status
-      const submissions = this.getList<ExamSubmission>(DB_KEYS.SUBMISSIONS);
-      const sub = submissions.find(s => s.candidateId === existing.id);
-      
-      if (sub && (sub.status === 'SUBMITTED' || sub.status === 'GRADED')) {
-        return { status: 'REJECTED', error: 'Assessment already submitted.' }; 
-      }
-      
-      // Update existing record with latest details just in case, but keep ID
-      existing.currentCompany = candidate.currentCompany;
-      existing.currentSalary = candidate.currentSalary;
-      existing.noticePeriod = candidate.noticePeriod;
-      existing.assignedPaperId = assignment.paperId; // Ensure paper ID is synced
-      this.saveList(DB_KEYS.CANDIDATES, list);
+    // 2. Check for ANY active session to resume (Status IN_PROGRESS or No Submission record yet)
+    // We prioritize resuming an active session over creating a new one, even for the tester.
+    const activeCandidate = userCandidates.find(c => {
+        const sub = submissions.find(s => s.candidateId === c.id);
+        // If no submission record exists, they registered but didn't init exam => effectively in progress
+        // If submission exists, check status
+        return !sub || sub.status === 'IN_PROGRESS';
+    });
 
-      return { status: 'RESUMED', candidate: existing };
+    if (activeCandidate) {
+        // Resume logic
+        activeCandidate.currentCompany = candidate.currentCompany;
+        activeCandidate.currentSalary = candidate.currentSalary;
+        activeCandidate.noticePeriod = candidate.noticePeriod;
+        activeCandidate.assignedPaperId = assignment.paperId; // Sync assignment if changed
+        this.saveList(DB_KEYS.CANDIDATES, list);
+        return { status: 'RESUMED', candidate: activeCandidate };
     }
 
-    // New Candidate
+    // 3. No active session found. Check if they have completed it before.
+    const hasPastSubmission = userCandidates.some(c => {
+         const sub = submissions.find(s => s.candidateId === c.id);
+         return sub && (sub.status === 'SUBMITTED' || sub.status === 'GRADED');
+    });
+
+    if (hasPastSubmission) {
+        // If it is the default tester, allow them to create a NEW candidate record (Retake)
+        if (candidate.email.toLowerCase() !== 'alex.tester@example.com') {
+             return { status: 'REJECTED', error: 'Assessment already submitted.' }; 
+        }
+        // If Alex Tester, we deliberately fall through to create a new record
+    }
+
+    // 4. New Candidate
     list.push(candidate);
     this.saveList(DB_KEYS.CANDIDATES, list);
     return { status: 'CREATED', candidate };
