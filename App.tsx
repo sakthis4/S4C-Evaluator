@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AppRoute, Candidate } from './types';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import Instructions from './pages/Instructions';
 import Exam from './pages/Exam';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
@@ -26,9 +27,12 @@ const App: React.FC = () => {
   };
 
   const handleRegister = (candidate: Candidate) => {
-    // Registration logic is now handled in Login.tsx
-    // We just set the state here
+    // Set user and move to Instructions page instead of Exam directly
     setCurrentUser(candidate);
+    setCurrentRoute(AppRoute.INSTRUCTIONS);
+  };
+
+  const handleStartExam = () => {
     setCurrentRoute(AppRoute.EXAM);
   };
 
@@ -49,6 +53,8 @@ const App: React.FC = () => {
         return <Login onRegister={handleRegister} onAdminClick={handleAdminClick} />;
       case AppRoute.ADMIN_LOGIN:
         return <AdminLogin onLogin={handleAdminAuth} onBack={() => setCurrentRoute(AppRoute.LOGIN)} />;
+      case AppRoute.INSTRUCTIONS:
+        return <Instructions onStart={handleStartExam} candidateName={currentUser?.fullName} />;
       case AppRoute.EXAM:
         if (!currentUser) return <Login onRegister={handleRegister} onAdminClick={handleAdminClick} />;
         return <Exam candidateId={currentUser.id} onFinish={handleExamFinish} />;

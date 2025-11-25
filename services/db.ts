@@ -27,16 +27,29 @@ class DatabaseService {
     }
   }
 
-  async registerCandidate(candidate: Candidate): Promise<boolean> {
+  async registerCandidate(candidate: Candidate): Promise<{ status: 'CREATED' | 'RESUMED' | 'REJECTED', candidate?: Candidate }> {
     await delay(300);
     const list = this.getList<Candidate>(DB_KEYS.CANDIDATES);
-    // Validate by Email
-    if (list.find(c => c.email.toLowerCase() === candidate.email.toLowerCase())) {
-      return false; // Already exists
+    const existing = list.find(c => c.email.toLowerCase() === candidate.email.toLowerCase());
+
+    if (existing) {
+      // Check submission status
+      const submissions = this.getList<ExamSubmission>(DB_KEYS.SUBMISSIONS);
+      const sub = submissions.find(s => s.candidateId === existing.id);
+      
+      // If submitted or graded, reject
+      if (sub && (sub.status === 'SUBMITTED' || sub.status === 'GRADED')) {
+        return { status: 'REJECTED' }; 
+      }
+      
+      // Otherwise allow resume
+      return { status: 'RESUMED', candidate: existing };
     }
+
+    // New Candidate
     list.push(candidate);
     this.saveList(DB_KEYS.CANDIDATES, list);
-    return true;
+    return { status: 'CREATED', candidate };
   }
 
   async getCandidate(id: string): Promise<Candidate | undefined> {

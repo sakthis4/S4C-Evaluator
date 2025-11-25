@@ -24,18 +24,23 @@ const Login: React.FC<LoginProps> = ({ onRegister, onAdminClick }) => {
     setIsLoading(true);
     setError('');
 
-    const candidate: Candidate = {
+    const newCandidate: Candidate = {
       id: crypto.randomUUID(),
       registeredAt: Date.now(),
       ...formData
     };
 
     try {
-      const success = await db.registerCandidate(candidate);
-      if (success) {
-        onRegister(candidate);
+      const result = await db.registerCandidate(newCandidate);
+      
+      if (result.status === 'CREATED' && result.candidate) {
+        onRegister(result.candidate);
+      } else if (result.status === 'RESUMED' && result.candidate) {
+        // Optional: Replace alert with a toast or nicer UI if desired
+        alert(`Welcome back, ${result.candidate.fullName}! Resuming your assessment.`);
+        onRegister(result.candidate);
       } else {
-        setError('This email address has already been registered for the exam.');
+        setError('This email address has already been registered and the exam is submitted.');
       }
     } catch (e) {
       setError('Registration failed. Please try again.');
@@ -135,7 +140,7 @@ const Login: React.FC<LoginProps> = ({ onRegister, onAdminClick }) => {
             disabled={isLoading}
             className="w-full bg-brand-600 text-white py-2 px-4 rounded-md hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors font-medium disabled:opacity-50"
           >
-            {isLoading ? 'Registering...' : 'Start Assessment'}
+            {isLoading ? 'Checking...' : 'Start / Resume Assessment'}
           </button>
         </div>
       </form>

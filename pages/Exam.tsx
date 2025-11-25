@@ -25,28 +25,45 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
 type SaveStatus = 'saved' | 'saving' | 'error';
 
 const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
-  // Pre-fill answers with ideal keys for testing purposes
-  const [answers, setAnswers] = useState<Record<string, string>>(() => {
-    const initialAnswers: Record<string, string> = {};
-    QUESTIONS.forEach(q => {
-      initialAnswers[q.id] = q.idealAnswerKey;
-    });
-    return initialAnswers;
-  });
-
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [proctorLogs, setProctorLogs] = useState<ProctorLog[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<number>(Date.now());
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
 
-  // Initialize DB entry
+  // Initialize DB entry and load saved data (Resume capability)
   useEffect(() => {
-    db.initSubmission(candidateId);
+    const loadSession = async () => {
+      const sub = await db.initSubmission(candidateId);
+      if (sub) {
+        if (sub.proctorLogs && sub.proctorLogs.length > 0) {
+          setProctorLogs(sub.proctorLogs);
+        }
+        
+        // If answers exist (Resume), load them. 
+        // If new session (Empty), pre-fill with dummy data for testing convenience as requested.
+        if (sub.answers && Object.keys(sub.answers).length > 0) {
+           setAnswers(sub.answers);
+        } else {
+           // PRE-FILL ONLY FOR NEW SESSIONS (Testing Convenience)
+           const initialAnswers: Record<string, string> = {};
+           QUESTIONS.forEach(q => {
+             initialAnswers[q.id] = q.idealAnswerKey;
+           });
+           setAnswers(initialAnswers);
+        }
+      }
+    };
+    loadSession();
   }, [candidateId]);
 
   // Periodic Auto-save with visual status
   useEffect(() => {
+    // Debounce/interval save
     const interval = setInterval(async () => {
+      // Only save if there's data to save
+      if (Object.keys(answers).length === 0) return;
+
       setSaveStatus('saving');
       try {
         await db.saveDraft(candidateId, answers, proctorLogs);
@@ -72,10 +89,7 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
 
   const handleAnswerChange = (qId: string, text: string) => {
     setAnswers(prev => ({ ...prev, [qId]: text }));
-    if (saveStatus === 'saved') {
-       // Optional: Immediately show unsaved state if preferred, 
-       // currently we just wait for the interval to pick it up.
-    }
+    // Immediately set to saving if desired, but interval handles it
   };
 
   const handleSubmit = async () => {
@@ -92,7 +106,7 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
 
       // 3. Auto-grade with AI
       try {
-        // Timeout after 60 seconds to prevent hanging (increased from 15s)
+        // Timeout after 60 seconds to prevent hanging
         const evaluation = await withTimeout(evaluateExam(QUESTIONS, answers), 60000);
         await db.saveEvaluation(candidateId, evaluation);
       } catch (aiError) {
