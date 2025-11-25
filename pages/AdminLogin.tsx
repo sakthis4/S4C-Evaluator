@@ -13,7 +13,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, onBack }) => {
     e.preventDefault();
     const success = onLogin(password);
     if (!success) {
-      setError('Invalid password. Try "admin".');
+      setError('Invalid password.');
     }
   };
 

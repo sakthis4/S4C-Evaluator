@@ -17,7 +17,7 @@ const App: React.FC = () => {
   };
 
   const handleAdminAuth = (password: string) => {
-    if (password === 'admin') {
+    if (password === 'Qbend#123') {
       setIsAdmin(true);
       setCurrentRoute(AppRoute.ADMIN_DASHBOARD);
       return true;
