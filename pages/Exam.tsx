@@ -22,6 +22,8 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
   });
 };
 
+type SaveStatus = 'saved' | 'saving' | 'error';
+
 const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
   // Pre-fill answers with ideal keys for testing purposes
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
@@ -35,17 +37,27 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
   const [proctorLogs, setProctorLogs] = useState<ProctorLog[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<number>(Date.now());
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
 
   // Initialize DB entry
   useEffect(() => {
     db.initSubmission(candidateId);
   }, [candidateId]);
 
-  // Periodic Auto-save
+  // Periodic Auto-save with visual status
   useEffect(() => {
-    const interval = setInterval(() => {
-      db.saveDraft(candidateId, answers, proctorLogs);
-      setLastSaved(Date.now());
+    const interval = setInterval(async () => {
+      setSaveStatus('saving');
+      try {
+        await db.saveDraft(candidateId, answers, proctorLogs);
+        // Add a tiny artificial delay so the user sees the "Saving..." state momentarily
+        await new Promise(resolve => setTimeout(resolve, 400));
+        setLastSaved(Date.now());
+        setSaveStatus('saved');
+      } catch (e) {
+        console.error("Auto-save failed", e);
+        setSaveStatus('error');
+      }
     }, 5000); // Save every 5 seconds
     return () => clearInterval(interval);
   }, [answers, proctorLogs, candidateId]);
@@ -60,11 +72,16 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
 
   const handleAnswerChange = (qId: string, text: string) => {
     setAnswers(prev => ({ ...prev, [qId]: text }));
+    if (saveStatus === 'saved') {
+       // Optional: Immediately show unsaved state if preferred, 
+       // currently we just wait for the interval to pick it up.
+    }
   };
 
   const handleSubmit = async () => {
     // Removed blocking window.confirm to prevent environment cancellation errors
     setIsSubmitting(true);
+    setSaveStatus('saving');
     
     try {
       // 1. Save final answers
@@ -90,6 +107,40 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
     }
   };
 
+  const renderSaveStatus = () => {
+    switch (saveStatus) {
+      case 'saving':
+        return (
+          <div className="flex items-center gap-2 text-brand-600">
+            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-xs font-medium">Saving...</span>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="flex items-center gap-2 text-red-600">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs font-medium">Could not save</span>
+          </div>
+        );
+      case 'saved':
+      default:
+        return (
+          <div className="flex items-center gap-2 text-green-600">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="text-xs font-medium">All changes saved</span>
+          </div>
+        );
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Proctoring isActive={!isSubmitting} onViolation={handleProctorViolation} />
@@ -101,12 +152,20 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
       </div>
 
       <div className="bg-white shadow rounded-lg p-4 flex justify-between items-center sticky top-0 z-10 border-b">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
             <span className="text-gray-600 font-medium">Progress: {Object.keys(answers).length} / {QUESTIONS.length} Answered</span>
-            <span className="text-xs text-gray-400">Autosaved: {new Date(lastSaved).toLocaleTimeString()}</span>
+            <div className="h-6 w-px bg-gray-300"></div>
+            {renderSaveStatus()}
         </div>
-        <div className="text-red-600 font-bold text-sm">
-            Violations Detected: {proctorLogs.length}
+        <div className="text-red-600 font-bold text-sm flex items-center gap-2">
+            {proctorLogs.length > 0 && (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <span>Violations: {proctorLogs.length}</span>
+              </>
+            )}
         </div>
       </div>
 
@@ -131,7 +190,7 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
                />
             ) : (
               <textarea
-                className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-500 focus:border-brand-500 font-mono text-sm"
+                className="w-full h-40 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 font-sans text-base leading-relaxed text-gray-800 resize-y"
                 placeholder="Type your answer here..."
                 value={answers[q.id] || ''}
                 onChange={(e) => handleAnswerChange(q.id, e.target.value)}

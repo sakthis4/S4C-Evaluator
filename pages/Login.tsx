@@ -13,7 +13,7 @@ const Login: React.FC<LoginProps> = ({ onRegister, onAdminClick }) => {
     fullName: 'Alex Tester',
     email: 'alex.tester@example.com',
     currentCompany: 'Tech Innovations Ltd',
-    currentSalary: '25 LPA',
+    currentSalary: '5 LPA',
     noticePeriod: '15 Days'
   });
   const [error, setError] = useState('');

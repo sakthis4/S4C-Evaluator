@@ -82,7 +82,19 @@ const Admin: React.FC = () => {
             </div>
             
             <div className="bg-green-50 p-4 rounded border border-green-200">
-                <h3 className="font-bold text-green-800 mb-2">AI Assessment</h3>
+                <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-green-800">AI Assessment</h3>
+                    {submission?.aiEvaluation && (
+                        <button 
+                            onClick={() => submission && handleEvaluate(submission)}
+                            disabled={!!evaluatingId}
+                            className="text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 border border-green-300 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                            {evaluatingId === selectedCandidateId ? 'Processing...' : 'Re-evaluate'}
+                        </button>
+                    )}
+                </div>
+
                 {submission?.aiEvaluation ? (
                     <div className="space-y-2">
                         <div className="flex justify-between items-center text-lg font-bold">
@@ -126,9 +138,9 @@ const Admin: React.FC = () => {
                             </div>
                             <div className="mb-2">
                                 <span className="text-xs font-semibold text-gray-500 uppercase">Candidate Answer:</span>
-                                <p className="text-sm text-gray-800 whitespace-pre-wrap mt-1 p-2 bg-white border rounded">
+                                <div className="text-sm text-gray-800 whitespace-pre-wrap mt-1 p-2 bg-white border rounded font-mono">
                                     {ans || <span className="text-gray-400 italic">No answer provided</span>}
-                                </p>
+                                </div>
                             </div>
                             {evalData && (
                                 <div>

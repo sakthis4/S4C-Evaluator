@@ -32,7 +32,12 @@ export const evaluateExam = async (
   const promptParts = [
     `You are a Senior Technical Interviewer evaluating a React Developer candidate.`,
     `The context of the application is: ${EXAM_CONTEXT}`,
-    `Evaluate the following answers strictly based on the question and the ideal technical concepts required.`,
+    `Evaluate the answers based on technical accuracy, conceptual understanding, and problem-solving approach.`,
+    `IMPORTANT INSTRUCTIONS FOR GRADING:`,
+    `1. The 'Context/Ideal Key' provided is a GUIDELINE for expected concepts, NOT a strict answer key. Do not require exact text matches.`,
+    `2. If the candidate provides a valid alternative solution or uses different wording that demonstrates correct understanding, award appropriate marks.`,
+    `3. For coding questions (Javascript/React), focus on the logic, state management, and correct usage of hooks. Minor syntax errors should be penalized slightly, but not result in a zero score if the logic is sound.`,
+    `4. For architectural/design questions, evaluate the feasibility and reasoning of their approach.`,
     `Return the output strictly in JSON format.`,
     `For each question, provide a score (0-10) and brief feedback (max 2 sentences).`,
     `Also provide a pass/fail status (Pass if total score > 60% of max).`,
