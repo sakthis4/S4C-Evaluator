@@ -26,6 +26,7 @@ class DatabaseService {
           title: 'Default: Pathfinder Production Tracking',
           description: 'Standard assessment for React Developer role involving the Pathfinder legacy modernization scenario.',
           questions: QUESTIONS.map(q => ({ ...q, marks: 10 })), // Default 10 marks
+          duration: 60, // Default 60 minutes
           createdAt: Date.now()
         };
         this.saveList(DB_KEYS.PAPERS, [defaultPaper]);
@@ -98,6 +99,16 @@ class DatabaseService {
     const list = this.getList<QuestionPaper>(DB_KEYS.PAPERS);
     list.push(paper);
     this.saveList(DB_KEYS.PAPERS, list);
+  }
+
+  async updateQuestionPaper(paper: QuestionPaper): Promise<void> {
+    await delay(200);
+    const list = this.getList<QuestionPaper>(DB_KEYS.PAPERS);
+    const index = list.findIndex(p => p.id === paper.id);
+    if (index !== -1) {
+        list[index] = paper;
+        this.saveList(DB_KEYS.PAPERS, list);
+    }
   }
 
   async getAllPapers(): Promise<QuestionPaper[]> {
@@ -178,6 +189,33 @@ class DatabaseService {
   async getAllCandidates(): Promise<Candidate[]> {
     await delay(200);
     return this.getList<Candidate>(DB_KEYS.CANDIDATES);
+  }
+
+  async deleteCandidate(id: string): Promise<void> {
+    await delay(200);
+    
+    // Remove Candidate
+    let candidates = this.getList<Candidate>(DB_KEYS.CANDIDATES);
+    const candidateToDelete = candidates.find(c => c.id === id);
+    candidates = candidates.filter(c => c.id !== id);
+    this.saveList(DB_KEYS.CANDIDATES, candidates);
+
+    // Remove Submission
+    let submissions = this.getList<ExamSubmission>(DB_KEYS.SUBMISSIONS);
+    submissions = submissions.filter(s => s.candidateId !== id);
+    this.saveList(DB_KEYS.SUBMISSIONS, submissions);
+
+    // Remove Assignment (optional: only if we want to completely wipe them, but usually assignment is by email)
+    // If we delete the assignment, they can't log in again. 
+    // Let's keep assignment so they can potentially be re-added, OR remove it. 
+    // Generally "Delete User" in this context implies wiping the slate clean.
+    if (candidateToDelete) {
+        let assignments = this.getList<ExamAssignment>(DB_KEYS.ASSIGNMENTS);
+        // Note: Assignment is by email, not candidate ID. 
+        // We will remove assignment for that email to ensure full clean slate.
+        assignments = assignments.filter(a => a.email.toLowerCase() !== candidateToDelete.email.toLowerCase());
+        this.saveList(DB_KEYS.ASSIGNMENTS, assignments);
+    }
   }
 
   // --- Submissions ---

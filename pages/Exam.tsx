@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Question, ProctorLog, ExamSubmission } from '../types';
 import { EXAM_CONTEXT } from '../constants';
 import Proctoring from '../components/Proctoring';
@@ -31,6 +31,10 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  
+  // Timer State
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const totalDurationRef = useRef<number>(60); // Default 60 mins
 
   // Initialize Data
   useEffect(() => {
@@ -50,6 +54,7 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
         return;
       }
       setQuestions(paper.questions);
+      totalDurationRef.current = paper.duration || 60; // Use paper duration or default
 
       // Load or Initialize Submission
       const sub = await db.initSubmission(candidateId, candidate.assignedPaperId);
@@ -61,8 +66,9 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
         if (sub.answers && Object.keys(sub.answers).length > 0) {
            setAnswers(sub.answers);
         } else {
-           // For testing convenience: Prefill strictly if we are using the DEFAULT paper only
-           if (candidate.assignedPaperId === 'default-pathfinder-v1') {
+           // STRICT CHECK: Only pre-fill answers if it is the Default Test User
+           // This prevents regular candidates from seeing the answers.
+           if (candidate.email === 'alex.tester@example.com') {
                const initialAnswers: Record<string, string> = {};
                paper.questions.forEach(q => {
                    initialAnswers[q.id] = q.idealAnswerKey;
@@ -70,6 +76,13 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
                setAnswers(initialAnswers);
            }
         }
+        
+        // Calculate Time Remaining
+        const now = Date.now();
+        const elapsedSeconds = Math.floor((now - sub.startTime) / 1000);
+        const totalSeconds = totalDurationRef.current * 60;
+        const remaining = totalSeconds - elapsedSeconds;
+        setTimeRemaining(remaining > 0 ? remaining : 0);
       }
       setIsLoading(false);
     };
@@ -93,6 +106,23 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
     }, 5000); 
     return () => clearInterval(interval);
   }, [answers, proctorLogs, candidateId]);
+
+  // Timer Countdown Logic
+  useEffect(() => {
+    if (timeRemaining === null || isSubmitting) return;
+
+    if (timeRemaining <= 0) {
+        // Time is up!
+        handleSubmit();
+        return;
+    }
+
+    const timer = setInterval(() => {
+        setTimeRemaining(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeRemaining, isSubmitting]);
 
   const handleProctorViolation = useCallback((log: ProctorLog) => {
     setProctorLogs(prev => [...prev, log]);
@@ -161,6 +191,23 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
     }
   };
 
+  const formatTime = (seconds: number) => {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      if (h > 0) {
+          return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      }
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const getTimerColor = () => {
+      if (timeRemaining === null) return 'text-gray-600';
+      if (timeRemaining < 300) return 'text-red-600 animate-pulse font-bold'; // Less than 5 mins
+      if (timeRemaining < 900) return 'text-yellow-600 font-bold'; // Less than 15 mins
+      return 'text-gray-800 font-bold';
+  };
+
   if (isLoading) {
       return <div className="p-8 text-center">Loading Exam Paper...</div>;
   }
@@ -180,6 +227,14 @@ const Exam: React.FC<ExamProps> = ({ candidateId, onFinish }) => {
             <div className="h-6 w-px bg-gray-300"></div>
             {renderSaveStatus()}
         </div>
+        
+        {/* Timer Display */}
+        {timeRemaining !== null && (
+            <div className={`text-xl bg-gray-100 px-4 py-1 rounded border ${getTimerColor()}`}>
+                Time Left: {formatTime(timeRemaining)}
+            </div>
+        )}
+
         <div className="text-red-600 font-bold text-sm flex items-center gap-2">
             {proctorLogs.length > 0 && (
               <>

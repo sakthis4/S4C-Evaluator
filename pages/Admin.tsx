@@ -18,12 +18,15 @@ const Admin: React.FC = () => {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
   
-  // New Exam Form State
-  const [newPaperTitle, setNewPaperTitle] = useState('');
-  const [newPaperDesc, setNewPaperDesc] = useState('');
-  const [newQuestions, setNewQuestions] = useState<Question[]>([]);
+  // Exam Paper Editor State
+  const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
+  const [paperTitle, setPaperTitle] = useState('');
+  const [paperDesc, setPaperDesc] = useState('');
+  const [paperDuration, setPaperDuration] = useState(60);
+  const [questions, setQuestions] = useState<Question[]>([]);
   
-  // New Question State
+  // New/Edit Question State
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [qTitle, setQTitle] = useState('');
   const [qText, setQText] = useState('');
   const [qType, setQType] = useState<'text' | 'javascript'>('text');
@@ -58,6 +61,13 @@ const Admin: React.FC = () => {
     fetchData();
   }, []);
 
+  const handleDeleteCandidate = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete user ${name}? This action cannot be undone.`)) {
+        await db.deleteCandidate(id);
+        await fetchData();
+    }
+  };
+
   const handleEvaluate = async (submission: ExamSubmission) => {
     setEvaluatingId(submission.candidateId);
     try {
@@ -77,10 +87,45 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleAddQuestion = () => {
+  // --- Paper Editor Logic ---
+
+  const initPaperEditor = (paper?: QuestionPaper) => {
+    if (paper) {
+        setEditingPaperId(paper.id);
+        setPaperTitle(paper.title);
+        setPaperDesc(paper.description);
+        setPaperDuration(paper.duration || 60);
+        setQuestions([...paper.questions]);
+    } else {
+        setEditingPaperId(null);
+        setPaperTitle('');
+        setPaperDesc('');
+        setPaperDuration(60);
+        setQuestions([]);
+    }
+    // Reset question form
+    clearQuestionForm();
+  };
+
+  const clearQuestionForm = () => {
+    setEditingQuestionId(null);
+    setQTitle(''); setQText(''); setQKey(''); setQType('text'); setQMarks('10');
+  };
+
+  const loadQuestionForEdit = (q: Question) => {
+    setEditingQuestionId(q.id);
+    setQTitle(q.title);
+    setQText(q.text);
+    setQType(q.codeType || 'text');
+    setQMarks(String(q.marks || 10));
+    setQKey(q.idealAnswerKey);
+  };
+
+  const handleAddOrUpdateQuestion = () => {
     if (!qTitle || !qText) return;
+    
     const newQ: Question = {
-      id: `q-${Date.now()}`,
+      id: editingQuestionId || `q-${Date.now()}`,
       section: 'Custom Section',
       title: qTitle,
       text: qText,
@@ -88,23 +133,44 @@ const Admin: React.FC = () => {
       marks: parseInt(qMarks) || 10,
       idealAnswerKey: qKey
     };
-    setNewQuestions([...newQuestions, newQ]);
-    // Reset inputs
-    setQTitle(''); setQText(''); setQKey('');
+
+    if (editingQuestionId) {
+        // Update existing
+        setQuestions(questions.map(q => q.id === editingQuestionId ? newQ : q));
+    } else {
+        // Add new
+        setQuestions([...questions, newQ]);
+    }
+    clearQuestionForm();
+  };
+
+  const removeQuestion = (qId: string) => {
+      setQuestions(questions.filter(q => q.id !== qId));
   };
 
   const handleSavePaper = async () => {
-    if (!newPaperTitle || newQuestions.length === 0) return;
+    if (!paperTitle || questions.length === 0) {
+        alert("Please provide a title and at least one question.");
+        return;
+    }
+    
     const paper: QuestionPaper = {
-      id: `paper-${Date.now()}`,
-      title: newPaperTitle,
-      description: newPaperDesc,
-      questions: newQuestions,
-      createdAt: Date.now()
+      id: editingPaperId || `paper-${Date.now()}`,
+      title: paperTitle,
+      description: paperDesc,
+      questions: questions,
+      duration: paperDuration,
+      createdAt: editingPaperId ? (papers.find(p => p.id === editingPaperId)?.createdAt || Date.now()) : Date.now()
     };
-    await db.createQuestionPaper(paper);
-    setNewPaperTitle(''); setNewPaperDesc(''); setNewQuestions([]);
-    alert("Exam Paper Created!");
+
+    if (editingPaperId) {
+        await db.updateQuestionPaper(paper);
+    } else {
+        await db.createQuestionPaper(paper);
+    }
+    
+    alert("Exam Paper Saved!");
+    initPaperEditor(undefined); // Reset
     fetchData();
   };
 
@@ -129,83 +195,120 @@ const Admin: React.FC = () => {
   // --- Subcomponents for Cleanliness ---
 
   const renderManageExams = () => (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-xl font-bold mb-6">Create New Question Paper</h3>
-      
-      <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div>
-           <label className="block text-sm font-medium mb-1">Paper Title</label>
-           <input className="w-full border rounded p-2" value={newPaperTitle} onChange={e => setNewPaperTitle(e.target.value)} placeholder="e.g. React Senior Dev Assessment v2" />
-        </div>
-        <div>
-           <label className="block text-sm font-medium mb-1">Description</label>
-           <input className="w-full border rounded p-2" value={newPaperDesc} onChange={e => setNewPaperDesc(e.target.value)} placeholder="Short description..." />
-        </div>
-      </div>
-
-      <div className="border-t pt-6">
-        <h4 className="font-bold mb-4">Add Questions</h4>
-        <div className="bg-gray-50 p-4 rounded border mb-4 space-y-4">
-           <div>
-              <label className="block text-sm font-medium">Question Title</label>
-              <input className="w-full border rounded p-2" value={qTitle} onChange={e => setQTitle(e.target.value)} />
-           </div>
-           <div>
-              <label className="block text-sm font-medium">Question Text</label>
-              <textarea className="w-full border rounded p-2" rows={2} value={qText} onChange={e => setQText(e.target.value)} />
-           </div>
-           <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium">Type</label>
-                <select className="w-full border rounded p-2" value={qType} onChange={(e: any) => setQType(e.target.value)}>
-                    <option value="text">Text / Descriptive</option>
-                    <option value="javascript">Code (JS/React)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium">Marks</label>
-                <input type="number" className="w-full border rounded p-2" value={qMarks} onChange={e => setQMarks(e.target.value)} />
-              </div>
-           </div>
-           <div>
-              <label className="block text-sm font-medium">Ideal Answer Key (Context for AI)</label>
-              <textarea className="w-full border rounded p-2" rows={2} value={qKey} onChange={e => setQKey(e.target.value)} />
-           </div>
-           <button onClick={handleAddQuestion} className="bg-brand-600 text-white px-4 py-2 rounded text-sm hover:bg-brand-700">
-             Add Question
-           </button>
-        </div>
-
-        {newQuestions.length > 0 && (
-            <div className="mb-6">
-                <h5 className="font-bold text-sm text-gray-700 mb-2">Questions Added ({newQuestions.length}):</h5>
-                <ul className="list-disc list-inside text-sm text-gray-600">
-                    {newQuestions.map((q, i) => (
-                        <li key={i}>{q.title} ({q.marks} marks)</li>
-                    ))}
-                </ul>
+    <div className="grid md:grid-cols-3 gap-6">
+        {/* Left Col: List of Papers */}
+        <div className="md:col-span-1 bg-white rounded-lg shadow p-4 h-fit">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-lg">Exam Papers</h3>
+                <button 
+                    onClick={() => initPaperEditor()} 
+                    className="text-xs bg-brand-600 text-white px-2 py-1 rounded hover:bg-brand-700"
+                >
+                    + New
+                </button>
             </div>
-        )}
+            <ul className="space-y-2">
+                {papers.map(p => (
+                    <li key={p.id} className="bg-gray-50 p-3 rounded border hover:bg-gray-100">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <div className="font-medium text-sm">{p.title}</div>
+                                <div className="text-xs text-gray-500">{p.questions.length} Qs • {p.duration || 60} mins</div>
+                            </div>
+                            <button 
+                                onClick={() => initPaperEditor(p)} 
+                                className="text-brand-600 hover:text-brand-800 text-xs font-medium"
+                            >
+                                Edit
+                            </button>
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </div>
 
-        <button onClick={handleSavePaper} className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 font-bold">
-           Save Question Paper
-        </button>
-      </div>
+        {/* Right Col: Editor */}
+        <div className="md:col-span-2 bg-white rounded-lg shadow p-6">
+            <h3 className="text-xl font-bold mb-6">
+                {editingPaperId ? 'Edit Exam Paper' : 'Create New Exam Paper'}
+            </h3>
+            
+            <div className="grid md:grid-cols-2 gap-6 mb-4">
+                <div>
+                <label className="block text-sm font-medium mb-1">Paper Title</label>
+                <input className="w-full border rounded p-2" value={paperTitle} onChange={e => setPaperTitle(e.target.value)} placeholder="e.g. React Senior Dev Assessment v2" />
+                </div>
+                <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <input className="w-full border rounded p-2" value={paperDesc} onChange={e => setPaperDesc(e.target.value)} placeholder="Short description..." />
+                </div>
+                <div>
+                <label className="block text-sm font-medium mb-1">Duration (minutes)</label>
+                <input type="number" className="w-full border rounded p-2" value={paperDuration} onChange={e => setPaperDuration(parseInt(e.target.value) || 60)} />
+                </div>
+            </div>
 
-      <div className="mt-12 border-t pt-6">
-        <h3 className="text-lg font-bold mb-4">Existing Papers</h3>
-        <ul className="space-y-2">
-            {papers.map(p => (
-                <li key={p.id} className="bg-gray-50 p-3 rounded flex justify-between items-center border">
+            <div className="border-t pt-6 bg-gray-50 -mx-6 px-6 pb-6">
+                <h4 className="font-bold mb-4">{editingQuestionId ? 'Edit Question' : 'Add Question'}</h4>
+                <div className="bg-white p-4 rounded border mb-4 space-y-4 shadow-sm">
                     <div>
-                        <span className="font-medium">{p.title}</span>
-                        <span className="text-gray-500 text-sm ml-2">({p.questions.length} questions)</span>
+                        <label className="block text-sm font-medium">Question Title</label>
+                        <input className="w-full border rounded p-2" value={qTitle} onChange={e => setQTitle(e.target.value)} />
                     </div>
-                    <span className="text-xs text-gray-400">ID: {p.id}</span>
-                </li>
-            ))}
-        </ul>
-      </div>
+                    <div>
+                        <label className="block text-sm font-medium">Question Text</label>
+                        <textarea className="w-full border rounded p-2" rows={2} value={qText} onChange={e => setQText(e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium">Type</label>
+                            <select className="w-full border rounded p-2" value={qType} onChange={(e: any) => setQType(e.target.value)}>
+                                <option value="text">Text / Descriptive</option>
+                                <option value="javascript">Code (JS/React)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">Marks</label>
+                            <input type="number" className="w-full border rounded p-2" value={qMarks} onChange={e => setQMarks(e.target.value)} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium">Ideal Answer Key (Context for AI)</label>
+                        <textarea className="w-full border rounded p-2" rows={2} value={qKey} onChange={e => setQKey(e.target.value)} />
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={handleAddOrUpdateQuestion} className="bg-brand-600 text-white px-4 py-2 rounded text-sm hover:bg-brand-700">
+                            {editingQuestionId ? 'Update Question' : 'Add Question'}
+                        </button>
+                        {editingQuestionId && (
+                             <button onClick={clearQuestionForm} className="bg-gray-300 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-400">
+                                Cancel
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mb-6">
+                    <h5 className="font-bold text-sm text-gray-700 mb-2">Questions in Paper ({questions.length}):</h5>
+                    {questions.length === 0 && <p className="text-gray-500 text-xs italic">No questions added yet.</p>}
+                    <ul className="space-y-2">
+                        {questions.map((q, i) => (
+                            <li key={i} className="bg-white p-2 rounded border flex justify-between items-center text-sm">
+                                <span className="truncate flex-1 font-medium">{q.title} <span className="text-gray-500 font-normal">({q.marks} marks)</span></span>
+                                <div className="flex gap-2 ml-2">
+                                    <button onClick={() => loadQuestionForEdit(q)} className="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
+                                    <button onClick={() => removeQuestion(q.id)} className="text-red-600 hover:text-red-800 text-xs">Remove</button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+
+                <button onClick={handleSavePaper} className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 font-bold w-full">
+                    {editingPaperId ? 'Save Changes' : 'Create Paper'}
+                </button>
+            </div>
+        </div>
     </div>
   );
 
@@ -420,9 +523,15 @@ const Admin: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button 
                         onClick={() => setSelectedCandidateId(candidate.id)}
-                        className="text-brand-600 hover:text-brand-900"
+                        className="text-brand-600 hover:text-brand-900 mr-3"
                     >
-                        View Details
+                        View
+                    </button>
+                    <button 
+                        onClick={() => handleDeleteCandidate(candidate.id, candidate.fullName)}
+                        className="text-red-600 hover:text-red-900"
+                    >
+                        Delete
                     </button>
                   </td>
                 </tr>

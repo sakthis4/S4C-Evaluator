@@ -24,6 +24,7 @@ export interface QuestionPaper {
   title: string;
   description: string;
   questions: Question[];
+  duration: number; // Duration in minutes
   createdAt: number;
 }
 
